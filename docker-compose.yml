@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15
+    container_name: cloud_disk_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cloud_disk
+      POSTGRES_PASSWORD: cloud_disk
+      POSTGRES_DB: cloud_disk
+    ports:
+      - "5433:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloud_disk -d cloud_disk"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db_data:
