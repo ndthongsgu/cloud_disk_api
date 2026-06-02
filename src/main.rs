@@ -1,4 +1,5 @@
 mod common;
+mod dtos;
 mod handlers;
 mod middlewares;
 mod models;
@@ -29,11 +30,15 @@ async fn main() -> std::io::Result<()> {
     tracing::info!(port = %port, "Server running at http://127.0.0.1:{}", port);
 
     HttpServer::new(move || {
+        let cors = actix_cors::Cors::permissive();
+
         App::new()
+            .wrap(cors)
             .wrap(TracingLogger::default())
-            .app_data(db_pool.clone())
+            .app_data(actix_web::web::Data::new(db_pool.clone()))
             .configure(routes::configure_routes)
     })
+
     .bind(format!("127.0.0.1:{}", port))?
     .run()
     .await

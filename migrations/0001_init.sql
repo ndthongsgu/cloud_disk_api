@@ -13,8 +13,9 @@ CREATE TABLE users (
     updated_by UUID,                                         -- ID người cập nhật tài khoản gần nhất
     version INT NOT NULL DEFAULT 1,                          -- Phiên bản bản ghi (tránh xung đột ghi đồng thời)
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE,               -- Trạng thái xóa mềm (Soft delete)
+    is_admin BOOLEAN NOT NULL DEFAULT FALSE,                  -- Tài khoản admin khởi tạo tự động.
     username VARCHAR(255) UNIQUE NOT NULL,                   -- Tên đăng nhập duy nhất (ví dụ: admin, user1)
-    password_hash VARCHAR(255) NOT NULL,                      -- Mã băm mật khẩu bảo mật (Argon2, bcrypt...)
+    password_hash VARCHAR(255) NOT NULL,                     -- Mã băm mật khẩu bảo mật (Argon2, bcrypt...)
     status VARCHAR(50) NOT NULL,                             -- Trạng thái tài khoản (ACTIVE, LOCKED, BANNED)
     code VARCHAR(100) UNIQUE NOT NULL,                       -- Mã định danh người dùng duy nhất
     full_name VARCHAR(255) NOT NULL,                         -- Họ và tên đầy đủ
@@ -180,6 +181,7 @@ COMMENT ON COLUMN users.updated_date IS 'Thời gian cập nhật thông tin tà
 COMMENT ON COLUMN users.updated_by IS 'ID tài khoản của người cập nhật bản ghi này gần nhất';
 COMMENT ON COLUMN users.version IS 'Số phiên bản dùng cho Khóa Lạc Quan (Optimistic Locking) tránh xung đột đồng thời';
 COMMENT ON COLUMN users.is_deleted IS 'Trạng thái xóa mềm (Soft Delete)';
+COMMENT ON COLUMN users.is_admin IS 'Tài khoản admin được khởi tạo từ đầu';
 COMMENT ON COLUMN users.username IS 'Tên đăng nhập duy nhất dùng để truy cập hệ thống';
 COMMENT ON COLUMN users.password_hash IS 'Mã băm mật khẩu bảo mật (bcrypt, argon2...)';
 COMMENT ON COLUMN users.status IS 'Trạng thái tài khoản (ACTIVE, LOCKED, BANNED)';

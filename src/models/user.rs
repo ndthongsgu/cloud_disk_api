@@ -31,6 +31,8 @@ pub struct User {
     pub version: i32,
     /// Trạng thái xóa mềm (Soft delete)
     pub is_deleted: bool,
+    /// Tài khoản admin được khởi tạo từ đầu
+    pub is_admin: bool,
     /// Tên đăng nhập duy nhất
     pub username: String,
     /// Mã băm mật khẩu bảo mật (bcrypt, argon2...)

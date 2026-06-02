@@ -1,6 +1,81 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Các phân hệ (modules) chính trong hệ thống
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SystemModule {
+    Dashboard,
+    Users,
+    TelegramBots,
+    Folders,
+    Files,
+    Roles,
+}
+
+impl SystemModule {
+    pub fn code(&self) -> &'static str {
+        match self {
+            SystemModule::Dashboard => "dashboard",
+            SystemModule::Users => "users",
+            SystemModule::TelegramBots => "telegram_bots",
+            SystemModule::Folders => "folders",
+            SystemModule::Files => "files",
+            SystemModule::Roles => "roles",
+        }
+    }
+
+    pub fn url_path(&self) -> &'static str {
+        match self {
+            SystemModule::Dashboard => "dashboard",
+            SystemModule::Users => "users",
+            SystemModule::TelegramBots => "telegram-bots",
+            SystemModule::Folders => "folders",
+            SystemModule::Files => "files",
+            SystemModule::Roles => "roles",
+        }
+    }
+}
+
+
+/// Các hành động (actions) kiểm tra quyền hạn chuẩn trong hệ thống
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SystemAction {
+    View,
+    Add,
+    Edit,
+    Active,
+    DeActive,
+    All,
+    Custom(&'static str),
+}
+
+impl SystemAction {
+    pub fn field_key(&self) -> &'static str {
+        match self {
+            SystemAction::View => "view",
+            SystemAction::Add => "add",
+            SystemAction::Edit => "edit",
+            SystemAction::Active => "active",
+            SystemAction::DeActive => "deactive",
+            SystemAction::All => "all",
+            SystemAction::Custom(s) => s,
+        }
+    }
+
+    pub fn code(&self) -> &'static str {
+        match self {
+            SystemAction::View => "View",
+            SystemAction::Add => "Add",
+            SystemAction::Edit => "Edit",
+            SystemAction::Active => "Active",
+            SystemAction::DeActive => "DeActive",
+            SystemAction::All => "All",
+            SystemAction::Custom(s) => s,
+        }
+    }
+}
+
+
 /// Phương thức HTTP dùng cho cấu hình API Path
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ApiMethod {
@@ -59,7 +134,9 @@ pub struct PermissionItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub edit: Option<ActionPermission>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub delete: Option<ActionPermission>,
+    pub active: Option<ActionPermission>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deactive: Option<ActionPermission>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub all: Option<ActionPermission>,
 
@@ -103,7 +180,7 @@ pub fn get_default_role_group() -> RoleGroup {
     // Định nghĩa các Action mẫu
     let all_action = ActionPermission {
         name: "Tất cả".to_string(),
-        code: "All".to_string(),
+        code: SystemAction::All.code().to_string(),
         value: false,
         path_apis: None,
     };
@@ -111,7 +188,7 @@ pub fn get_default_role_group() -> RoleGroup {
     let view_action = |controller: &str, method: ApiMethod| -> ActionPermission {
         ActionPermission {
             name: "Xem".to_string(),
-            code: "View".to_string(),
+            code: SystemAction::View.code().to_string(),
             value: false,
             path_apis: Some(vec![ApiPath {
                 controller_child: controller.to_string(),
@@ -136,17 +213,18 @@ pub fn get_default_role_group() -> RoleGroup {
     let dashboard_group = ModuleGroup {
         id: 1,
         name: "Thống kê".to_string(),
-        code: "dashboard".to_string(),
+        code: SystemModule::Dashboard.code().to_string(),
         children: vec![
             PermissionItem {
                 code: "dashboard_storage".to_string(),
                 name: "Thống kê dung lượng".to_string(),
                 controller: "dashboard".to_string(),
                 path_webs: vec!["dashboard/storage".to_string()],
-                view: Some(view_action("dashboard/storage", ApiMethod::GET)),
+                view: Some(view_action(&format!("{}/storage", SystemModule::Dashboard.url_path()), ApiMethod::GET)),
                 add: None,
                 edit: None,
-                delete: None,
+                active: None,
+                deactive: None,
                 all: Some(all_action.clone()),
                 extra_actions: HashMap::new(),
             },
@@ -155,10 +233,11 @@ pub fn get_default_role_group() -> RoleGroup {
                 name: "Thống kê người dùng".to_string(),
                 controller: "dashboard".to_string(),
                 path_webs: vec!["dashboard/user".to_string()],
-                view: Some(view_action("dashboard/user", ApiMethod::GET)),
+                view: Some(view_action(&format!("{}/user", SystemModule::Dashboard.url_path()), ApiMethod::GET)),
                 add: None,
                 edit: None,
-                delete: None,
+                active: None,
+                deactive: None,
                 all: Some(all_action.clone()),
                 extra_actions: HashMap::new(),
             },
@@ -169,16 +248,17 @@ pub fn get_default_role_group() -> RoleGroup {
     let users_group = ModuleGroup {
         id: 2,
         name: "Người dùng".to_string(),
-        code: "users".to_string(),
+        code: SystemModule::Users.code().to_string(),
         children: vec![PermissionItem {
             code: "users_manage".to_string(),
             name: "Quản lý tài khoản".to_string(),
             controller: "user".to_string(),
             path_webs: vec!["users/list".to_string()],
-            view: Some(view_action("users", ApiMethod::GET)),
-            add: Some(write_action("Thêm người dùng", "Add", "users", ApiMethod::POST)),
-            edit: Some(write_action("Sửa người dùng", "Edit", "users", ApiMethod::PUT)),
-            delete: Some(write_action("Xóa người dùng", "Delete", "users", ApiMethod::DELETE)),
+            view: Some(view_action(SystemModule::Users.url_path(), ApiMethod::GET)),
+            add: Some(write_action("Thêm người dùng", SystemAction::Add.code(), SystemModule::Users.url_path(), ApiMethod::POST)),
+            edit: Some(write_action("Sửa người dùng", SystemAction::Edit.code(), SystemModule::Users.url_path(), ApiMethod::PUT)),
+            active: Some(write_action("Kích hoạt người dùng", SystemAction::Active.code(), SystemModule::Users.url_path(), ApiMethod::POST)),
+            deactive: Some(write_action("Khóa người dùng", SystemAction::DeActive.code(), SystemModule::Users.url_path(), ApiMethod::POST)),
             all: Some(all_action.clone()),
             extra_actions: {
                 let mut map = HashMap::new();
@@ -190,7 +270,7 @@ pub fn get_default_role_group() -> RoleGroup {
                         code: "LockUser".to_string(),
                         value: false,
                         path_apis: Some(vec![ApiPath {
-                            controller_child: "users/lock".to_string(),
+                            controller_child: format!("{}/lock", SystemModule::Users.url_path()),
                             method: ApiMethod::POST.as_str().to_string(),
                         }]),
                     },
@@ -204,16 +284,17 @@ pub fn get_default_role_group() -> RoleGroup {
     let bots_group = ModuleGroup {
         id: 3,
         name: "Telegram Nodes".to_string(),
-        code: "telegram_bots".to_string(),
+        code: SystemModule::TelegramBots.code().to_string(),
         children: vec![PermissionItem {
             code: "bots_manage".to_string(),
             name: "Quản lý Bot lưu trữ".to_string(),
             controller: "telegram_bot".to_string(),
             path_webs: vec!["bots/list".to_string()],
-            view: Some(view_action("telegram-bots", ApiMethod::GET)),
-            add: Some(write_action("Thêm Bot", "Add", "telegram-bots", ApiMethod::POST)),
-            edit: Some(write_action("Sửa Bot", "Edit", "telegram-bots", ApiMethod::PUT)),
-            delete: Some(write_action("Xóa Bot", "Delete", "telegram-bots", ApiMethod::DELETE)),
+            view: Some(view_action(SystemModule::TelegramBots.url_path(), ApiMethod::GET)),
+            add: Some(write_action("Thêm Bot", SystemAction::Add.code(), SystemModule::TelegramBots.url_path(), ApiMethod::POST)),
+            edit: Some(write_action("Sửa Bot", SystemAction::Edit.code(), SystemModule::TelegramBots.url_path(), ApiMethod::PUT)),
+            active: Some(write_action("Kích hoạt Bot", SystemAction::Active.code(), &format!("{}/activate", SystemModule::TelegramBots.url_path()), ApiMethod::POST)),
+            deactive: Some(write_action("Ngưng hoạt động Bot", SystemAction::DeActive.code(), &format!("{}/deactivate", SystemModule::TelegramBots.url_path()), ApiMethod::POST)),
             all: Some(all_action.clone()),
             extra_actions: HashMap::new(),
         }],
@@ -223,16 +304,17 @@ pub fn get_default_role_group() -> RoleGroup {
     let folders_group = ModuleGroup {
         id: 4,
         name: "Thư mục ảo".to_string(),
-        code: "folders".to_string(),
+        code: SystemModule::Folders.code().to_string(),
         children: vec![PermissionItem {
             code: "folders_manage".to_string(),
             name: "Quản lý thư mục ảo".to_string(),
             controller: "folder".to_string(),
             path_webs: vec!["folders".to_string()],
-            view: Some(view_action("folders", ApiMethod::GET)),
-            add: Some(write_action("Tạo thư mục", "Add", "folders", ApiMethod::POST)),
-            edit: Some(write_action("Đổi tên", "Edit", "folders", ApiMethod::PUT)),
-            delete: Some(write_action("Xóa thư mục", "Delete", "folders", ApiMethod::DELETE)),
+            view: Some(view_action(SystemModule::Folders.url_path(), ApiMethod::GET)),
+            add: Some(write_action("Tạo thư mục", SystemAction::Add.code(), SystemModule::Folders.url_path(), ApiMethod::POST)),
+            edit: Some(write_action("Đổi tên", SystemAction::Edit.code(), SystemModule::Folders.url_path(), ApiMethod::PUT)),
+            active: Some(write_action("Kích hoạt thư mục", SystemAction::Active.code(), SystemModule::Folders.url_path(), ApiMethod::POST)),
+            deactive: Some(write_action("Ngưng hoạt động thư mục", SystemAction::DeActive.code(), SystemModule::Folders.url_path(), ApiMethod::POST)),
             all: Some(all_action.clone()),
             extra_actions: HashMap::new(),
         }],
@@ -242,16 +324,17 @@ pub fn get_default_role_group() -> RoleGroup {
     let files_group = ModuleGroup {
         id: 5,
         name: "Tệp tin".to_string(),
-        code: "files".to_string(),
+        code: SystemModule::Files.code().to_string(),
         children: vec![PermissionItem {
             code: "files_manage".to_string(),
             name: "Quản lý tệp tin".to_string(),
             controller: "file".to_string(),
             path_webs: vec!["files".to_string()],
-            view: Some(view_action("files", ApiMethod::GET)),
-            add: Some(write_action("Tải lên", "Add", "files/upload", ApiMethod::POST)),
+            view: Some(view_action(SystemModule::Files.url_path(), ApiMethod::GET)),
+            add: Some(write_action("Tải lên", SystemAction::Add.code(), &format!("{}/upload", SystemModule::Files.url_path()), ApiMethod::POST)),
             edit: None,
-            delete: Some(write_action("Xóa file", "Delete", "files", ApiMethod::DELETE)),
+            active: Some(write_action("Kích hoạt file", SystemAction::Active.code(), SystemModule::Files.url_path(), ApiMethod::POST)),
+            deactive: Some(write_action("Ngưng hoạt động file", SystemAction::DeActive.code(), SystemModule::Files.url_path(), ApiMethod::POST)),
             all: Some(all_action.clone()),
             extra_actions: {
                 let mut map = HashMap::new();
@@ -262,7 +345,7 @@ pub fn get_default_role_group() -> RoleGroup {
                         code: "Download".to_string(),
                         value: false,
                         path_apis: Some(vec![ApiPath {
-                            controller_child: "files/download".to_string(),
+                            controller_child: format!("{}/download", SystemModule::Files.url_path()),
                             method: ApiMethod::GET.as_str().to_string(),
                         }]),
                     },
@@ -274,7 +357,7 @@ pub fn get_default_role_group() -> RoleGroup {
                         code: "Stream".to_string(),
                         value: false,
                         path_apis: Some(vec![ApiPath {
-                            controller_child: "files/stream".to_string(),
+                            controller_child: format!("{}/stream", SystemModule::Files.url_path()),
                             method: ApiMethod::GET.as_str().to_string(),
                         }]),
                     },
@@ -288,16 +371,17 @@ pub fn get_default_role_group() -> RoleGroup {
     let roles_group = ModuleGroup {
         id: 6,
         name: "Vai trò & Quyền".to_string(),
-        code: "roles".to_string(),
+        code: SystemModule::Roles.code().to_string(),
         children: vec![PermissionItem {
             code: "roles_manage".to_string(),
             name: "Quản lý vai trò".to_string(),
             controller: "role".to_string(),
             path_webs: vec!["roles".to_string()],
-            view: Some(view_action("roles", ApiMethod::GET)),
-            add: Some(write_action("Thêm vai trò", "Add", "roles", ApiMethod::POST)),
-            edit: Some(write_action("Sửa vai trò", "Edit", "roles", ApiMethod::PUT)),
-            delete: Some(write_action("Xóa vai trò", "Delete", "roles", ApiMethod::DELETE)),
+            view: Some(view_action(SystemModule::Roles.url_path(), ApiMethod::GET)),
+            add: Some(write_action("Thêm vai trò", SystemAction::Add.code(), SystemModule::Roles.url_path(), ApiMethod::POST)),
+            edit: Some(write_action("Sửa vai trò", SystemAction::Edit.code(), SystemModule::Roles.url_path(), ApiMethod::PUT)),
+            active: Some(write_action("Kích hoạt vai trò", SystemAction::Active.code(), SystemModule::Roles.url_path(), ApiMethod::POST)),
+            deactive: Some(write_action("Ngưng hoạt động vai trò", SystemAction::DeActive.code(), SystemModule::Roles.url_path(), ApiMethod::POST)),
             all: Some(all_action.clone()),
             extra_actions: HashMap::new(),
         }],
