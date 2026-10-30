@@ -44,7 +44,7 @@ VALUES
     'admin@clouddisk.com', 
     '0123456789', 
     'Cloud Disk', 
-    0, 
+    100000000000, 
     0
 )
 ON CONFLICT (username) DO NOTHING;

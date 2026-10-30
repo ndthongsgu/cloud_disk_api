@@ -12,6 +12,9 @@ use crate::common::constants::permission::{SystemModule, SystemAction};
 
 /// Chuyển đổi struct model TelegramBot sang BotResponse DTO để trả về Client
 fn to_response(bot: TelegramBot) -> BotResponse {
+    let status_label = crate::common::constants::status::get_bot_status_label(bot.status).to_string();
+    let is_can_deactive = crate::common::constants::status::can_deactivate_bot(bot.status, bot.is_deleted);
+    let is_can_active = crate::common::constants::status::can_activate_bot(bot.status, bot.is_deleted);
     BotResponse {
         id: bot.id,
         created_date: bot.created_date,
@@ -21,7 +24,12 @@ fn to_response(bot: TelegramBot) -> BotResponse {
         version: bot.version,
         code: bot.code,
         bot_username: bot.bot_username,
+        bot_token: bot.bot_token,
+        chat_id: bot.chat_id,
         status: bot.status,
+        status_label,
+        is_can_deactive,
+        is_can_active,
         total_files_handled: bot.total_files_handled,
     }
 }
@@ -105,7 +113,7 @@ pub async fn get_bots(
     let bots_res = if is_admin {
         sqlx::query_as::<_, TelegramBot>(
             r#"
-            SELECT id, created_date, created_by, updated_date, updated_by, version, is_deleted, code, bot_username, bot_token, status, total_files_handled
+            SELECT id, created_date, created_by, updated_date, updated_by, version, is_deleted, code, bot_username, bot_token, chat_id, status, total_files_handled
             FROM telegram_bots
             WHERE is_deleted = false 
               AND ($1::varchar IS NULL OR bot_username ILIKE $1) 
@@ -123,7 +131,7 @@ pub async fn get_bots(
     } else {
         sqlx::query_as::<_, TelegramBot>(
             r#"
-            SELECT id, created_date, created_by, updated_date, updated_by, version, is_deleted, code, bot_username, bot_token, status, total_files_handled
+            SELECT id, created_date, created_by, updated_date, updated_by, version, is_deleted, code, bot_username, bot_token, chat_id, status, total_files_handled
             FROM telegram_bots
             WHERE is_deleted = false 
               AND created_by = $1
@@ -180,7 +188,7 @@ pub async fn get_bot_detail(
 
     // 2. Lấy thông tin Bot từ Database
     let bot_res = sqlx::query_as::<_, TelegramBot>(
-        "SELECT id, created_date, created_by, updated_date, updated_by, version, is_deleted, code, bot_username, bot_token, status, total_files_handled FROM telegram_bots WHERE id = $1 AND is_deleted = false"
+        "SELECT id, created_date, created_by, updated_date, updated_by, version, is_deleted, code, bot_username, bot_token, chat_id, status, total_files_handled FROM telegram_bots WHERE id = $1 AND is_deleted = false"
     )
     .bind(bot_id)
     .fetch_optional(db.get_ref())
@@ -228,9 +236,9 @@ pub async fn create_bot(
     }
 
     // Ràng buộc dữ liệu đầu vào
-    if request.code.trim().is_empty() || request.bot_token.trim().is_empty() || request.bot_username.trim().is_empty() {
+    if request.code.trim().is_empty() || request.bot_token.trim().is_empty() || request.bot_username.trim().is_empty() || request.chat_id.trim().is_empty() {
         return HttpResponse::BadRequest().json(serde_json::json!({
-            "message": "Các thông tin code, username và token của Bot không được để trống"
+            "message": "Các thông tin code, username, token và chat ID của Bot không được để trống"
         }));
     }
 
@@ -255,7 +263,7 @@ pub async fn create_bot(
 
     // 3. Premium Check: Kết nối thời gian thực đến Telegram Bot API để xác minh tính chính xác của Bot Token
     let telegram_service = init_telegram_service();
-    match telegram_service.get_me(&request.bot_token).await {
+    let bot_user_id = match telegram_service.get_me(&request.bot_token).await {
         Ok(tg_user) => {
             // Xác thực xem username bot nhập vào có trùng khớp với dữ liệu thực từ Telegram không
             if let Some(ref tg_username) = tg_user.username {
@@ -268,22 +276,50 @@ pub async fn create_bot(
                     }));
                 }
             }
+            tg_user.id
         }
         Err(_) => {
             return HttpResponse::BadRequest().json(serde_json::json!({
                 "message": "Không thể kết nối hoặc Token Bot không hợp lệ"
             }));
         }
+    };
+
+    // 4. Chuẩn hóa chat_id (nếu không bắt đầu bằng - hoặc @ và chứa ký tự phi số, tự động thêm @)
+    let mut normalized_chat_id = request.chat_id.trim().to_string();
+    if !normalized_chat_id.starts_with('-') && !normalized_chat_id.starts_with('@') {
+        if !normalized_chat_id.chars().all(|c| c.is_ascii_digit()) {
+            normalized_chat_id = format!("@{}", normalized_chat_id);
+        }
     }
 
-    // 4. Lưu thông tin vào Database (Bot được mặc định thuộc sở hữu của User/Tenant khởi tạo)
+    // Xác thực chat_id xem Bot có quyền truy cập hay không
+    match telegram_service.get_chat(&request.bot_token, &normalized_chat_id).await {
+        Ok(chat) => {
+            if chat.id == bot_user_id {
+                return HttpResponse::BadRequest().json(serde_json::json!({
+                    "message": "Chat ID không hợp lệ: Không thể sử dụng chính tài khoản của Bot làm nơi lưu trữ. Vui lòng sử dụng Kênh (Channel), Nhóm (Group/Supergroup) hoặc ID tài khoản Telegram cá nhân của bạn."
+                }));
+            }
+        }
+        Err(e) => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "message": format!(
+                    "Không thể kết nối đến Chat/Channel ID '{}': {}. Vui lòng kiểm tra lại ID, và đảm bảo bạn đã gửi tin nhắn /start cho Bot (nếu lưu trữ cá nhân) hoặc thêm Bot làm Quản trị viên (nếu lưu trữ qua Kênh/Nhóm).",
+                    normalized_chat_id, e
+                )
+            }));
+        }
+    }
+
+    // 5. Lưu thông tin vào Database (Bot được mặc định thuộc sở hữu của User/Tenant khởi tạo)
     let bot_id = Uuid::new_v4();
     let now = Utc::now().naive_utc();
 
     let insert_res = sqlx::query(
         r#"
-        INSERT INTO telegram_bots (id, created_date, created_by, updated_date, updated_by, version, is_deleted, code, bot_username, bot_token, status, total_files_handled)
-        VALUES ($1, $2, $3, $4, $5, 1, false, $6, $7, $8, $9, 0)
+        INSERT INTO telegram_bots (id, created_date, created_by, updated_date, updated_by, version, is_deleted, code, bot_username, bot_token, chat_id, status, total_files_handled)
+        VALUES ($1, $2, $3, $4, $5, 1, false, $6, $7, $8, $9, $10, 0)
         "#
     )
     .bind(bot_id)
@@ -294,6 +330,7 @@ pub async fn create_bot(
     .bind(&request.code)
     .bind(&request.bot_username)
     .bind(&request.bot_token)
+    .bind(&normalized_chat_id)
     .bind("ACTIVE") // Bot ban đầu ở trạng thái hoạt động
     .execute(db.get_ref())
     .await;
@@ -312,7 +349,8 @@ pub async fn create_bot(
                 code: request.code,
                 bot_username: request.bot_username,
                 bot_token: request.bot_token,
-                status: BotStatus::Active,
+                chat_id: normalized_chat_id,
+                status: BotStatus::ACTIVE,
                 total_files_handled: 0,
             };
             HttpResponse::Created().json(to_response(created_bot))
@@ -347,7 +385,7 @@ pub async fn update_bot(
 
     // 2. Lấy thông tin Bot hiện có
     let bot_res = sqlx::query_as::<_, TelegramBot>(
-        "SELECT id, created_date, created_by, updated_date, updated_by, version, is_deleted, code, bot_username, bot_token, status, total_files_handled FROM telegram_bots WHERE id = $1 AND is_deleted = false"
+        "SELECT id, created_date, created_by, updated_date, updated_by, version, is_deleted, code, bot_username, bot_token, chat_id, status, total_files_handled FROM telegram_bots WHERE id = $1 AND is_deleted = false"
     )
     .bind(bot_id)
     .fetch_optional(db.get_ref())
@@ -371,14 +409,49 @@ pub async fn update_bot(
         }));
     }
 
-    // 4. Nếu có cập nhật Token, thực hiện xác thực kết nối trước khi lưu
+    // 4. Nếu có cập nhật Token hoặc Chat ID, thực hiện xác thực kết nối trước khi lưu
     let final_token = request.bot_token.unwrap_or_else(|| bot.bot_token.clone());
+    let telegram_service = init_telegram_service();
     if final_token != bot.bot_token {
-        let telegram_service = init_telegram_service();
         if let Err(_) = telegram_service.get_me(&final_token).await {
             return HttpResponse::BadRequest().json(serde_json::json!({
                 "message": "Không thể cập nhật cấu hình: Token Bot mới không hoạt động"
             }));
+        }
+    }
+
+    let mut final_chat_id = request.chat_id.unwrap_or_else(|| bot.chat_id.clone()).trim().to_string();
+    if !final_chat_id.starts_with('-') && !final_chat_id.starts_with('@') {
+        if !final_chat_id.chars().all(|c| c.is_ascii_digit()) {
+            final_chat_id = format!("@{}", final_chat_id);
+        }
+    }
+
+    // Nếu token thay đổi HOẶC chat_id thay đổi, kiểm tra tính hợp lệ của chat_id
+    if final_token != bot.bot_token || final_chat_id != bot.chat_id {
+        let bot_user_id = match telegram_service.get_me(&final_token).await {
+            Ok(tg_user) => tg_user.id,
+            Err(_) => return HttpResponse::BadRequest().json(serde_json::json!({
+                "message": "Không thể kết nối đến Telegram Bot"
+            })),
+        };
+
+        match telegram_service.get_chat(&final_token, &final_chat_id).await {
+            Ok(chat) => {
+                if chat.id == bot_user_id {
+                    return HttpResponse::BadRequest().json(serde_json::json!({
+                        "message": "Chat ID không hợp lệ: Không thể sử dụng chính tài khoản của Bot làm nơi lưu trữ. Vui lòng sử dụng Kênh (Channel), Nhóm (Group/Supergroup) hoặc ID tài khoản Telegram cá nhân của bạn."
+                    }));
+                }
+            }
+            Err(e) => {
+                return HttpResponse::BadRequest().json(serde_json::json!({
+                    "message": format!(
+                        "Không thể kết nối đến Chat/Channel ID '{}': {}. Vui lòng kiểm tra lại ID, và đảm bảo bạn đã gửi tin nhắn /start cho Bot (nếu lưu trữ cá nhân) hoặc thêm Bot làm Quản trị viên (nếu lưu trữ qua Kênh/Nhóm).",
+                        final_chat_id, e
+                    )
+                }));
+            }
         }
     }
 
@@ -387,12 +460,13 @@ pub async fn update_bot(
     let update_res = sqlx::query(
         r#"
         UPDATE telegram_bots 
-        SET bot_username = $1, bot_token = $2, updated_date = $3, updated_by = $4, version = version + 1
-        WHERE id = $5 AND is_deleted = false
+        SET bot_username = $1, bot_token = $2, chat_id = $3, updated_date = $4, updated_by = $5, version = version + 1
+        WHERE id = $6 AND is_deleted = false
         "#
     )
     .bind(&request.bot_username)
     .bind(&final_token)
+    .bind(&final_chat_id)
     .bind(now)
     .bind(user.user_id)
     .bind(bot_id)
@@ -431,7 +505,7 @@ pub async fn deactivate_bot(
 
     // 2. Lấy thông tin Bot hiện có
     let bot_res = sqlx::query_as::<_, TelegramBot>(
-        "SELECT id, created_date, created_by, updated_date, updated_by, version, is_deleted, code, bot_username, bot_token, status, total_files_handled FROM telegram_bots WHERE id = $1 AND is_deleted = false"
+        "SELECT id, created_date, created_by, updated_date, updated_by, version, is_deleted, code, bot_username, bot_token, chat_id, status, total_files_handled FROM telegram_bots WHERE id = $1 AND is_deleted = false"
     )
     .bind(bot_id)
     .fetch_optional(db.get_ref())
@@ -503,7 +577,7 @@ pub async fn activate_bot(
 
     // 2. Lấy thông tin Bot hiện có
     let bot_res = sqlx::query_as::<_, TelegramBot>(
-        "SELECT id, created_date, created_by, updated_date, updated_by, version, is_deleted, code, bot_username, bot_token, status, total_files_handled FROM telegram_bots WHERE id = $1 AND is_deleted = false"
+        "SELECT id, created_date, created_by, updated_date, updated_by, version, is_deleted, code, bot_username, bot_token, chat_id, status, total_files_handled FROM telegram_bots WHERE id = $1 AND is_deleted = false"
     )
     .bind(bot_id)
     .fetch_optional(db.get_ref())

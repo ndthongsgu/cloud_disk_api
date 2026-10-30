@@ -47,6 +47,12 @@ pub struct UserResponse {
     pub is_admin: bool,
     pub username: String,
     pub status: String,
+    #[serde(rename = "statusLabel")]
+    pub status_label: String,
+    #[serde(rename = "isCanDeActive")]
+    pub is_can_deactive: bool,
+    #[serde(rename = "isCanActive")]
+    pub is_can_active: bool,
     pub code: String,
     pub full_name: String,
     pub email: String,

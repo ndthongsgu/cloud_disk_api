@@ -74,6 +74,7 @@ CREATE TABLE telegram_bots (
     code VARCHAR(100) UNIQUE NOT NULL,                       -- Mã định danh bot duy nhất
     bot_username VARCHAR(255) NOT NULL,                      -- Username của Bot (ví dụ: MyCloudStorageBot)
     bot_token VARCHAR(255) NOT NULL,                         -- Token API của Telegram Bot (mã hóa ở app level)
+    chat_id VARCHAR(255) NOT NULL DEFAULT '',                -- ID kênh/phòng chat Telegram để lưu trữ file
     status VARCHAR(50) NOT NULL,                             -- Trạng thái Bot (ACTIVE, RATE_LIMITED, BANNED)
     total_files_handled BIGINT NOT NULL DEFAULT 0             -- Thống kê số lượng file chunk con Bot đang chứa
 );
@@ -93,7 +94,9 @@ CREATE TABLE folders (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, -- Thư mục thuộc về người dùng nào
     parent_folder_id UUID REFERENCES folders(id) ON DELETE CASCADE, -- ID thư mục cha (NULL = Thư mục gốc - Root)
     folder_name VARCHAR(255) NOT NULL,                       -- Tên thư mục (ví dụ: Tài liệu học tập, Phim ảnh)
-    color_code VARCHAR(50)                                   -- Mã màu đại diện cho thư mục trên giao diện UI
+    color_code VARCHAR(50),                                  -- Mã màu đại diện cho thư mục trên giao diện UI
+    is_starred BOOLEAN NOT NULL DEFAULT FALSE,                -- Đánh dấu sao thư mục quan trọng
+    bot_id UUID REFERENCES telegram_bots(id) ON DELETE CASCADE -- Thư mục trong bot nào
 );
 
 -- -----------------------------------------------------------------------------
@@ -114,6 +117,8 @@ CREATE TABLE files (
     mime_type VARCHAR(100) NOT NULL,                         -- Định dạng MIME của file (ví dụ: video/mp4, image/png)
     size_bytes BIGINT NOT NULL,                              -- Tổng dung lượng tệp tin gốc (byte)
     is_video BOOLEAN NOT NULL DEFAULT FALSE,                 -- Đánh dấu nhanh tệp video phục vụ xử lý luồng stream
+    is_starred BOOLEAN NOT NULL DEFAULT FALSE,               -- Đánh dấu sao tệp tin quan trọng
+    bot_id UUID REFERENCES telegram_bots(id) ON DELETE CASCADE, -- Tệp trong bot nào
     upload_status VARCHAR(50) NOT NULL                       -- Trạng thái xử lý (PENDING, UPLOADING, PROCESSING, COMPLETED, FAILED)
 );
 
@@ -232,6 +237,7 @@ COMMENT ON COLUMN telegram_bots.is_deleted IS 'Trạng thái xóa mềm Bot';
 COMMENT ON COLUMN telegram_bots.code IS 'Mã định danh Bot nội bộ duy nhất';
 COMMENT ON COLUMN telegram_bots.bot_username IS 'Username định danh của Bot trên Telegram (ví dụ: MyDiskBot)';
 COMMENT ON COLUMN telegram_bots.bot_token IS 'Mã Token kết nối API Telegram Bot';
+COMMENT ON COLUMN telegram_bots.chat_id IS 'ID cuộc trò chuyện/kênh Telegram Bot dùng để upload và lưu trữ file';
 COMMENT ON COLUMN telegram_bots.status IS 'Trạng thái kết nối của Bot (ACTIVE, RATE_LIMITED, BANNED)';
 COMMENT ON COLUMN telegram_bots.total_files_handled IS 'Tổng số lượng file chunk vật lý Bot này đang lưu trữ thực tế';
 
@@ -246,6 +252,7 @@ COMMENT ON COLUMN folders.version IS 'Số phiên bản thư mục';
 COMMENT ON COLUMN folders.is_deleted IS 'Trạng thái xóa mềm thư mục ảo';
 COMMENT ON COLUMN folders.code IS 'Mã thư mục ảo duy nhất';
 COMMENT ON COLUMN folders.user_id IS 'ID tài khoản người dùng sở hữu thư mục ảo trỏ tới users.id';
+COMMENT ON COLUMN folders.bot_id IS 'ID bot dùng làm nơi lưu trữ vật lý cho thư mục ảo này trỏ tới telegram_bots.id';
 COMMENT ON COLUMN folders.parent_folder_id IS 'ID thư mục cha chứa thư mục này (NULL nếu nằm ở thư mục gốc)';
 COMMENT ON COLUMN folders.folder_name IS 'Tên hiển thị trực quan của thư mục ảo';
 COMMENT ON COLUMN folders.color_code IS 'Mã màu tùy chỉnh đại diện thư mục ảo hiển thị trên UI';
@@ -262,6 +269,7 @@ COMMENT ON COLUMN files.is_deleted IS 'Trạng thái xóa mềm tệp tin';
 COMMENT ON COLUMN files.code IS 'Mã định danh tệp tin logic duy nhất';
 COMMENT ON COLUMN files.user_id IS 'ID tài khoản người dùng sở hữu tệp trỏ tới users.id';
 COMMENT ON COLUMN files.folder_id IS 'ID thư mục ảo cha chứa tệp (NULL nếu nằm ở thư mục gốc)';
+COMMENT ON COLUMN files.bot_id IS 'ID bot dùng làm nơi lưu trữ vật lý';
 COMMENT ON COLUMN files.file_name IS 'Tên nguyên bản của tệp tin khi tải lên (ví dụ: bbc_document.pdf)';
 COMMENT ON COLUMN files.mime_type IS 'Định dạng tài nguyên MIME của tệp (ví dụ: video/mp4, image/jpeg, application/pdf)';
 COMMENT ON COLUMN files.size_bytes IS 'Tổng dung lượng nguyên bản của tệp tin gốc (byte)';

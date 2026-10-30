@@ -189,6 +189,19 @@ impl TelegramService {
         self.parse_response(response).await
     }
 
+    /// Lấy thông tin phòng chat/kênh để xác minh xem Bot có quyền truy cập hay không (/getChat)
+    pub async fn get_chat(&self, bot_token: &str, chat_id: &str) -> Result<TelegramChat, TelegramError> {
+        let url = format!("https://api.telegram.org/bot{}/getChat", bot_token);
+
+        let response = self.client.get(&url)
+            .query(&[("chat_id", chat_id)])
+            .send()
+            .await
+            .map_err(TelegramError::Network)?;
+
+        self.parse_response(response).await
+    }
+
     /// Tải lên một mảnh dữ liệu nhị phân (chunk file) dưới dạng Document lên Telegram
     ///
     /// # Arguments

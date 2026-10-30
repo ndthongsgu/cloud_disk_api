@@ -13,6 +13,8 @@ use crate::common::constants::permission::{SystemModule, SystemAction};
 fn to_response(role: Role) -> RoleResponse {
     let permissions_val: serde_json::Value = serde_json::from_str(&role.permissions)
         .unwrap_or_else(|_| serde_json::json!({}));
+    let is_deleted_label = crate::common::constants::status::get_deleted_label(role.is_deleted).to_string();
+    let is_can_delete = crate::common::constants::status::can_delete_role(&role.code, role.is_deleted);
     RoleResponse {
         id: role.id,
         created_date: role.created_date,
@@ -24,6 +26,8 @@ fn to_response(role: Role) -> RoleResponse {
         name: role.name,
         description: role.description,
         permissions: permissions_val,
+        is_deleted_label,
+        is_can_delete,
     }
 }
 

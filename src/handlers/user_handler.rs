@@ -14,12 +14,15 @@ use crate::common::constants::permission::{SystemModule, SystemAction};
 use crate::utils::password::hash_password;
 
 /// Chuyển đổi struct model User và danh sách vai trò sang UserResponse DTO để trả về Client
-fn to_response(user: User, roles: Vec<Uuid>) -> UserResponse {
+fn to_response(user: User, roles: Vec<Uuid>, current_user_id: Option<Uuid>) -> UserResponse {
     let status_str = match user.status {
         crate::models::user::UserStatus::Active => "ACTIVE".to_string(),
         crate::models::user::UserStatus::Locked => "LOCKED".to_string(),
         crate::models::user::UserStatus::Banned => "BANNED".to_string(),
     };
+    let status_label = crate::common::constants::status::get_user_status_label(user.status).to_string();
+    let is_can_deactive = crate::common::constants::status::can_deactivate_user(user.status, user.is_deleted, user.id, current_user_id);
+    let is_can_active = crate::common::constants::status::can_activate_user(user.status, user.is_deleted);
     UserResponse {
         id: user.id,
         created_date: user.created_date,
@@ -30,6 +33,9 @@ fn to_response(user: User, roles: Vec<Uuid>) -> UserResponse {
         is_admin: user.is_admin,
         username: user.username,
         status: status_str,
+        status_label,
+        is_can_deactive,
+        is_can_active,
         code: user.code,
         full_name: user.full_name,
         email: user.email,
@@ -210,7 +216,7 @@ pub async fn search_users(
             let mut responses = Vec::new();
             for u in items {
                 let role_ids = get_user_role_ids(db.get_ref(), u.id).await.unwrap_or_default();
-                responses.push(to_response(u, role_ids));
+                responses.push(to_response(u, role_ids, Some(claims.user_id)));
             }
             HttpResponse::Ok().json(serde_json::json!({
                 "items": responses,
@@ -270,7 +276,7 @@ pub async fn get_user_detail(
             }
             
             let role_ids = get_user_role_ids(db.get_ref(), u.id).await.unwrap_or_default();
-            HttpResponse::Ok().json(to_response(u, role_ids))
+            HttpResponse::Ok().json(to_response(u, role_ids, Some(claims.user_id)))
         }
         Ok(None) => HttpResponse::NotFound().json(serde_json::json!({
             "message": "Không tìm thấy thông tin tài khoản người dùng"
@@ -445,7 +451,7 @@ pub async fn create_user(
     .await;
 
     match u_created {
-        Ok(u) => HttpResponse::Created().json(to_response(u, body.roles)),
+        Ok(u) => HttpResponse::Created().json(to_response(u, body.roles, Some(claims.user_id))),
         Err(_) => HttpResponse::InternalServerError().json(serde_json::json!({
             "message": "Lỗi phản hồi thông tin tài khoản"
         })),
@@ -645,7 +651,7 @@ pub async fn update_user(
         }));
     }
 
-    HttpResponse::Ok().json(to_response(updated_user, body.roles))
+    HttpResponse::Ok().json(to_response(updated_user, body.roles, Some(claims.user_id)))
 }
 
 /// API POST /users/{id}/deactivate - Ngưng hoạt động người dùng (Khóa tài khoản)
@@ -894,3 +900,31 @@ pub async fn select_users(
         })),
     }
 }
+
+/// API GET /users/storage/info - Thống kê dung lượng lưu trữ của tài khoản
+#[get("/api/users/storage/info")]
+pub async fn get_storage_info(
+    db: web::Data<PgPool>,
+    user: UserClaims,
+) -> impl Responder {
+    let user_res = sqlx::query!(
+        "SELECT storage_quota_bytes, used_storage_bytes FROM users WHERE id = $1 AND is_deleted = false",
+        user.user_id
+    )
+    .fetch_optional(db.get_ref())
+    .await;
+
+    match user_res {
+        Ok(Some(u)) => {
+            let total = u.storage_quota_bytes.unwrap_or(15 * 1024 * 1024 * 1024); // Mặc định 15GB nếu NULL
+            HttpResponse::Ok().json(serde_json::json!({
+                "total": total,
+                "used": u.used_storage_bytes
+            }))
+        }
+        _ => HttpResponse::InternalServerError().json(serde_json::json!({
+            "message": "Lỗi khi truy vấn thông tin bộ nhớ"
+        })),
+    }
+}
+

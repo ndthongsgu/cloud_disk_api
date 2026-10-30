@@ -16,12 +16,14 @@ pub struct CreateBotRequest {
     pub code: String,
     pub bot_username: String,
     pub bot_token: String,
+    pub chat_id: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateBotRequest {
     pub bot_username: String,
     pub bot_token: Option<String>,
+    pub chat_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -34,6 +36,14 @@ pub struct BotResponse {
     pub version: i32,
     pub code: String,
     pub bot_username: String,
+    pub bot_token: String,
+    pub chat_id: String,
     pub status: BotStatus,
+    #[serde(rename = "statusLabel")]
+    pub status_label: String,
+    #[serde(rename = "isCanDeActive")]
+    pub is_can_deactive: bool,
+    #[serde(rename = "isCanActive")]
+    pub is_can_active: bool,
     pub total_files_handled: i64,
 }

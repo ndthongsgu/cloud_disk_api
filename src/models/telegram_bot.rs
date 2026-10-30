@@ -7,11 +7,11 @@ use uuid::Uuid;
 #[sqlx(type_name = "varchar", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum BotStatus {
     /// Bot hoạt động bình thường
-    Active,
+    ACTIVE,
     /// Bị dính giới hạn tần suất gửi tin từ API Telegram (Rate Limit)
-    RateLimited,
+    RATELIMITED,
     /// Bị khóa/cấm bởi Telegram
-    Banned,
+    BANNED,
 }
 
 /// Mô hình quản lý Telegram Bot làm phân đoạn node lưu trữ dữ liệu
@@ -37,6 +37,8 @@ pub struct TelegramBot {
     pub bot_username: String,
     /// Chuỗi mã Token API kết nối của Bot (Cần được mã hóa ở mức ứng dụng)
     pub bot_token: String,
+    /// ID cuộc trò chuyện/kênh Telegram Bot dùng để upload và lưu trữ file
+    pub chat_id: String,
     /// Trạng thái kết nối của Bot
     pub status: BotStatus,
     /// Tổng số lượng file chunk vật lý mà bot này đã/đang lưu giữ

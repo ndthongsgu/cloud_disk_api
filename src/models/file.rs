@@ -41,6 +41,8 @@ pub struct File {
     pub user_id: Uuid,
     /// ID thư mục cha chứa tệp ảo này (NULL đại diện cho thư mục gốc)
     pub folder_id: Option<Uuid>,
+    /// ID của bot lưu tệp này
+    pub bot_id: Uuid,
     /// Tên gốc của tệp tin lúc tải lên (ví dụ: movie.mp4)
     pub file_name: String,
     /// Định dạng tài nguyên MIME-Type (ví dụ: video/mp4, image/jpeg)

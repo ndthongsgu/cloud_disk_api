@@ -23,6 +23,8 @@ pub struct Folder {
     pub code: String,
     /// ID tài khoản người dùng sở hữu thư mục (khóa ngoại trỏ đến users.id)
     pub user_id: Uuid,
+    /// ID của bot lưu thư mục này
+    pub bot_id: Uuid,
     /// ID thư mục cha (NULL đại diện cho thư mục gốc - Root Folder)
     pub parent_folder_id: Option<Uuid>,
     /// Tên hiển thị của thư mục (ví dụ: Tài liệu)

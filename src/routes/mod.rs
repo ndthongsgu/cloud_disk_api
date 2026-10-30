@@ -10,6 +10,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(crate::handlers::user_handler::deactivate_user);
     cfg.service(crate::handlers::user_handler::activate_user);
     cfg.service(crate::handlers::user_handler::select_users);
+    cfg.service(crate::handlers::user_handler::get_storage_info);
 
     // Auth API
     cfg.service(crate::handlers::auth_handler::register);
@@ -37,11 +38,13 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(crate::handlers::file_handler::get_starred_files);
     cfg.service(crate::handlers::file_handler::get_trashed_files);
     cfg.service(crate::handlers::file_handler::create_folder);
-    cfg.service(crate::handlers::file_handler::get_storage_info);
     cfg.service(crate::handlers::file_handler::trash_file);
     cfg.service(crate::handlers::file_handler::restore_file);
     cfg.service(crate::handlers::file_handler::delete_file_permanently);
     cfg.service(crate::handlers::file_handler::upload_file);
+    cfg.service(crate::handlers::file_handler::download_file);
+    cfg.service(crate::handlers::file_handler::star_file);
+    cfg.service(crate::handlers::file_handler::rename_file);
 
     // Endpoint kiểm thử bảo mật (Protected Route)
     cfg.route("/users/me", web::get().to(get_my_profile));

@@ -37,4 +37,8 @@ pub struct RoleResponse {
     pub name: String,
     pub description: Option<String>,
     pub permissions: serde_json::Value,
+    #[serde(rename = "isDeletedLabel")]
+    pub is_deleted_label: String,
+    #[serde(rename = "isCanDelete")]
+    pub is_can_delete: bool,
 }
